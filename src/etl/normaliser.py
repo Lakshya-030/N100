@@ -10,14 +10,14 @@ def normalize_year(year):
     """Converts diverse year labels into a standard YYYY-MM format."""
     raw_str = str(year).strip()
     
-    # 1. Handle special markers and already-standardized strings [cite: 490]
+    # 1. Handle special markers and already-standardized strings 
     if raw_str.upper() == "TTM":
         return "TTM"
-    if len(raw_str) == 7 and raw_str[4] == '-': # Matches 'YYYY-MM' [cite: 490]
+    if len(raw_str) == 7 and raw_str[4] == '-': 
         return raw_str
         
-    # 2. Check for pure 4-digit financial years (e.g., '2025' or 2025) [cite: 490]
-    # Indian financial years close in March, so explicitly append '-03' [cite: 462, 490]
+    # 2. Check for pure 4-digit financial years 
+    # Indian financial years close in March, so explicitly append '-03' 
     if raw_str.isdigit() and len(raw_str) == 4:
         return f"{raw_str}-03"
         
@@ -30,7 +30,7 @@ def normalize_year(year):
         except ValueError:
             continue
             
-    # 4. Handle 'FY24' or 'FY2024' style prefix strings [cite: 490]
+    # 4. Handle 'FY24' or 'FY2024' style prefix strings 
     if raw_str.upper().startswith("FY"):
         import re
         digits = re.sub(r'\D', '', raw_str) # Extract numbers only

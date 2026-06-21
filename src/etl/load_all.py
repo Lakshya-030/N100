@@ -21,7 +21,7 @@ def align_dataframe_to_db(df, conn, table_name):
 
 def main():
     start_time = time.time()
-    print("[*] Launching Day 5 Full Ingestion Pipeline...")
+    print("Launching Day 5 Full Ingestion Pipeline")
     
     conn = sqlite3.connect("data/nifty100.db")
     conn.execute("PRAGMA foreign_keys = OFF;")
@@ -155,8 +155,8 @@ def main():
     pd.DataFrame(audit_records).to_csv("output/load_audit.csv", index=False)
     conn.close()
 
-    print(f"\n[+] 7 core + 5 supplementary · load order · load_audit.csv · row counts: companies={c_comp}, P&L~{c_pl}, BS~{c_bs}, CF~{c_cf}, prices={c_pr} · FK check {fk_check}")
-    print("[+] SPRINT 1 COMPLETE: ALL 10 TABLES LOADED SUCCESSFULLY WITH ZERO CRASHES!")
+    print(f"\n 7 core + 5 supplementary · load order · load_audit.csv · row counts: companies={c_comp}, P&L~{c_pl}, BS~{c_bs}, CF~{c_cf}, prices={c_pr} · FK check {fk_check}")
+    print("SPRINT 1 COMPLETE: ALL 10 TABLES LOADED SUCCESSFULLY WITH ZERO CRASHES!")
 
 if __name__ == "__main__":
     main()

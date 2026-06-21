@@ -2,7 +2,7 @@ import os
 import sqlite3
 
 def main():
-    print("[*] Rebuilding a fresh database structure...")
+    print("Rebuilding a fresh database structure")
     db_path = "data/nifty100.db"
     schema_path = "src/etl/schema.sql"
     
@@ -21,7 +21,7 @@ def main():
                 schema_sql = f.read()
             conn.executescript(schema_sql)
             conn.commit()
-            print("[+] Blank database tables built successfully from schema.sql!")
+            print("Blank database tables built successfully from schema.sql!")
     except sqlite3.Error as e:
         print(f"[-] Database build failed: {e}")
 
