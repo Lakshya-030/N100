@@ -64,7 +64,8 @@ def main():
     df_pl['company_id'] = df_pl['company_id'].apply(normalize_ticker)
     df_pl['year'] = df_pl['year'].apply(normalize_year)
     master_failures_list.extend(run_data_quality_checks(df_pl, 'profitandloss', valid_set))
-    df_pl_clean = align_dataframe_to_db(df_pl[df_pl['company_id'].isin(valid_list)].dropna(subset=['operating_profit']).drop_duplicates(subset=['company_id', 'year']), conn, 'profitandloss')
+    # Filter hata diya - ab saara real data load hoga
+    df_pl_clean = align_dataframe_to_db(df_pl.drop_duplicates(subset=['company_id', 'year']), conn, 'profitandloss')
     df_pl_clean.to_sql("profitandloss", conn, if_exists="append", index=False)
     log_audit('profitandloss', len(df_pl), len(df_pl_clean), len(df_pl) - len(df_pl_clean), t)
 
@@ -78,13 +79,15 @@ def main():
     df_bs_clean.to_sql("balancesheet", conn, if_exists="append", index=False)
     log_audit('balancesheet', len(df_bs), len(df_bs_clean), len(df_bs) - len(df_bs_clean), t)
 
-    # 4. Cash Flow
+   # 4. Cash Flow 
     t = time.time()
     df_cf = pd.read_excel("data/raw/cashflow.xlsx", header=1)
     df_cf['company_id'] = df_cf['company_id'].apply(normalize_ticker)
     df_cf['year'] = df_cf['year'].apply(normalize_year)
+    df_cf.columns = [str(col).strip().lower() for col in df_cf.columns]
     master_failures_list.extend(run_data_quality_checks(df_cf, 'cashflow', valid_set))
-    df_cf_clean = align_dataframe_to_db(df_cf[df_cf['company_id'].isin(valid_list)].dropna(subset=['net_cash_flow']).drop_duplicates(subset=['company_id', 'year']), conn, 'cashflow')
+    # Filter hata diya - ab saara real data load hoga
+    df_cf_clean = align_dataframe_to_db(df_cf.drop_duplicates(subset=['company_id', 'year']), conn, 'cashflow')
     df_cf_clean.to_sql("cashflow", conn, if_exists="append", index=False)
     log_audit('cashflow', len(df_cf), len(df_cf_clean), len(df_cf) - len(df_cf_clean), t)
 
