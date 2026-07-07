@@ -1,9 +1,7 @@
 import sys
 import os
 import time
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-
 import sqlite3
 import pandas as pd
 from datetime import datetime
@@ -22,19 +20,25 @@ def align_dataframe_to_db(df, conn, table_name):
 def main():
     start_time = time.time()
     print("Launching Day 5 Full Ingestion Pipeline")
-    
-    conn = sqlite3.connect("data/nifty100.db")
-    conn.execute("PRAGMA foreign_keys = OFF;")
+
+    db_dir = "data"
+    os.makedirs(db_dir, exist_ok=True)
+    db_path = os.path.join(db_dir, "nifty100.db")
+    conn = sqlite3.connect(db_path)
     
     all_tables = [
         'companies', 'profitandloss', 'balancesheet', 'cashflow', 
         'analysis', 'documents', 'prosandcons', 'sectors', 'stock_prices', 'market_cap'
     ]
+    
+    # Temporary disable just for truncation to avoid dependency order drop crashes
+    conn.execute("PRAGMA foreign_keys = OFF;")
     for t in all_tables:
         conn.execute(f"DELETE FROM {t};")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys = ON;")
     
+    conn.execute("PRAGMA foreign_keys = ON;")
+
     master_failures_list = []
     audit_records = []
 
@@ -48,12 +52,13 @@ def main():
             "runtime_s": round(time.time() - t_start, 4)
         })
 
-    # 1. Companies
+    # 1. Companies (Master Table)
     t = time.time()
     df_comp = pd.read_excel("data/raw/companies.xlsx", header=1)
     df_comp['id'] = df_comp['id'].apply(normalize_ticker)
     df_comp_clean = align_dataframe_to_db(df_comp.dropna(subset=['id']).drop_duplicates(subset=['id']), conn, 'companies')
     df_comp_clean.to_sql("companies", conn, if_exists="append", index=False)
+    
     valid_list = list(df_comp_clean['id'].unique())
     valid_set = set(valid_list)
     log_audit('companies', len(df_comp), len(df_comp_clean), len(df_comp) - len(df_comp_clean), t)
@@ -64,8 +69,9 @@ def main():
     df_pl['company_id'] = df_pl['company_id'].apply(normalize_ticker)
     df_pl['year'] = df_pl['year'].apply(normalize_year)
     master_failures_list.extend(run_data_quality_checks(df_pl, 'profitandloss', valid_set))
-    # Filter hata diya - ab saara real data load hoga
-    df_pl_clean = align_dataframe_to_db(df_pl.drop_duplicates(subset=['company_id', 'year']), conn, 'profitandloss')
+    
+    df_pl_filtered = df_pl[df_pl['company_id'].isin(valid_list)]
+    df_pl_clean = align_dataframe_to_db(df_pl_filtered.drop_duplicates(subset=['company_id', 'year']), conn, 'profitandloss')
     df_pl_clean.to_sql("profitandloss", conn, if_exists="append", index=False)
     log_audit('profitandloss', len(df_pl), len(df_pl_clean), len(df_pl) - len(df_pl_clean), t)
 
@@ -79,15 +85,15 @@ def main():
     df_bs_clean.to_sql("balancesheet", conn, if_exists="append", index=False)
     log_audit('balancesheet', len(df_bs), len(df_bs_clean), len(df_bs) - len(df_bs_clean), t)
 
-   # 4. Cash Flow 
+    # 4. Cash Flow
     t = time.time()
     df_cf = pd.read_excel("data/raw/cashflow.xlsx", header=1)
     df_cf['company_id'] = df_cf['company_id'].apply(normalize_ticker)
     df_cf['year'] = df_cf['year'].apply(normalize_year)
-    df_cf.columns = [str(col).strip().lower() for col in df_cf.columns]
     master_failures_list.extend(run_data_quality_checks(df_cf, 'cashflow', valid_set))
-    # Filter hata diya - ab saara real data load hoga
-    df_cf_clean = align_dataframe_to_db(df_cf.drop_duplicates(subset=['company_id', 'year']), conn, 'cashflow')
+    
+    df_cf_filtered = df_cf[df_cf['company_id'].isin(valid_list)]
+    df_cf_clean = align_dataframe_to_db(df_cf_filtered.drop_duplicates(subset=['company_id', 'year']), conn, 'cashflow')
     df_cf_clean.to_sql("cashflow", conn, if_exists="append", index=False)
     log_audit('cashflow', len(df_cf), len(df_cf_clean), len(df_cf) - len(df_cf_clean), t)
 
@@ -131,34 +137,38 @@ def main():
     df_sp_clean.to_sql("stock_prices", conn, if_exists="append", index=False)
     log_audit('stock_prices', len(df_sp), len(df_sp_clean), len(df_sp) - len(df_sp_clean), t)
 
-    # 10. Market Cap
+    # 10. Market Cap 🌟 (FIXED: Auto-align columns case-sensitively without blind overwriting)
     t = time.time()
     df_mc = pd.read_excel("data/supporting/market_cap.xlsx", header=0)
     df_mc['company_id'] = df_mc['company_id'].apply(normalize_ticker)
-    cursor = conn.execute("PRAGMA table_info(market_cap);")
-    db_cols = [row[1] for row in cursor.fetchall()]
-    if len(df_mc.columns) >= len(db_cols):
-        df_mc = df_mc.iloc[:, :len(db_cols)]
-        df_mc.columns = db_cols
-    df_mc_clean = align_dataframe_to_db(df_mc[df_mc['company_id'].isin(valid_list)].drop_duplicates(subset=['company_id', 'year']), conn, 'market_cap')
+    if 'year' in df_mc.columns:
+        df_mc['year'] = df_mc['year'].apply(normalize_year)
+    elif 'Year' in df_mc.columns:
+        df_mc['Year'] = df_mc['Year'].apply(normalize_year)
+        
+    df_mc_filtered = df_mc[df_mc['company_id'].isin(valid_list)]
+    df_mc_clean = align_dataframe_to_db(df_mc_filtered, conn, 'market_cap')
+    # Extra unique drop safe barrier
+    df_mc_clean = df_mc_clean.drop_duplicates(subset=['company_id', 'year'])
     df_mc_clean.to_sql("market_cap", conn, if_exists="append", index=False)
     log_audit('market_cap', len(df_mc), len(df_mc_clean), len(df_mc) - len(df_mc_clean), t)
 
     save_validation_failures(master_failures_list)
 
-    # Extract target checklist configurations
+    # Row count extraction
     c_comp = conn.execute("SELECT COUNT(*) FROM companies;").fetchone()[0]
     c_pl = conn.execute("SELECT COUNT(*) FROM profitandloss;").fetchone()[0]
     c_bs = conn.execute("SELECT COUNT(*) FROM balancesheet;").fetchone()[0]
     c_cf = conn.execute("SELECT COUNT(*) FROM cashflow;").fetchone()[0]
+    c_mc = conn.execute("SELECT COUNT(*) FROM market_cap;").fetchone()[0]
     c_pr = conn.execute("SELECT COUNT(*) FROM stock_prices;").fetchone()[0]
     fk_check = len(conn.execute("PRAGMA foreign_key_check;").fetchall())
-    
+
     os.makedirs("output", exist_ok=True)
     pd.DataFrame(audit_records).to_csv("output/load_audit.csv", index=False)
     conn.close()
 
-    print(f"\n 7 core + 5 supplementary · load order · load_audit.csv · row counts: companies={c_comp}, P&L~{c_pl}, BS~{c_bs}, CF~{c_cf}, prices={c_pr} · FK check {fk_check}")
+    print(f"\n 7 core + 5 supplementary · load order · load_audit.csv · row counts: companies={c_comp}, P&L~{c_pl}, BS~{c_bs}, CF~{c_cf}, market_cap={c_mc}, prices={c_pr} · FK check {fk_check}")
     print("SPRINT 1 COMPLETE: ALL 10 TABLES LOADED SUCCESSFULLY WITH ZERO CRASHES!")
 
 if __name__ == "__main__":

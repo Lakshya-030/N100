@@ -1,0 +1,30 @@
+presets:
+  quality_compounder:
+    min_roe: 15.0
+    max_de: 1.0
+    min_fcf: 0.0
+    min_revenue_cagr_5yr: 10.0
+
+  value_pick:
+    max_pe: 45.0       
+    max_pb: 6.0        
+    max_de: 1.8        
+    min_div_yield: 0.2 
+
+  growth_accelerator:
+    min_pat_cagr_5yr: 15.0
+    min_revenue_cagr_5yr: 12.0
+    max_de: 2.0
+
+  dividend_champion:
+    min_div_yield: 1.2   
+    max_div_payout: 95.0 
+    min_fcf: 0.0    
+
+  debt_free_blue_chip:
+    max_de: 0.1
+    min_roe: 12.0
+    min_sales: 3000.0
+
+  turnaround_watch:
+    min_revenue_cagr_5yr: 14.0
