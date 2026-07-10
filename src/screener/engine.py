@@ -2,6 +2,9 @@ import sqlite3
 import pandas as pd
 import yaml
 import os
+from src.analytics.peer import compute_peer_percentiles
+import matplotlib.pyplot as plt
+import numpy as np
 
 def load_screener_config():
     config_path = os.path.join("config", "screener_config.yaml")
@@ -112,6 +115,69 @@ def apply_core_filters(df, rules, name=""):
         filtered_df = filtered_df.sort_values(by="composite_quality_score", ascending=False)
         
     return filtered_df
+def generate_radar_charts(df):
+    """
+    Day 19: Generates radar charts for each company with peer group overlay.
+    Saves precisely to reports/radar_charts/ as [company_id]_radar.png
+    """
+    print("\n--- Day 19: Generating Radar Charts ---")
+    
+    # Strict folder creation according to deliverable screenshot
+    output_dir = os.path.join("reports", "radar_charts")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 8 Axes specified in Day 19 requirements
+    metrics = [
+        'return_on_equity_pct', 'operating_profit_margin_pct', 'net_profit_margin_pct',
+        'debt_to_equity', 'free_cash_flow_cr', 'pat_cagr_5yr', 'revenue_cagr_5yr', 
+        'composite_quality_score'
+    ]
+    labels = ['ROE', 'ROCE (OPM)', 'NPM', 'D/E', 'FCF', 'PAT 5Y', 'Rev 5Y', 'Composite']
+    num_vars = len(labels)
+    
+    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+    angles += angles[:1] # Close polygon loop
+    
+    # Compute peer group averages for the dashed overlay line
+    peer_averages = df.groupby('peer_group')[metrics].transform('mean')
+    
+    for idx, row in df.iterrows():
+        comp_id = row['company_id']
+        
+        # Absolute data boundaries control (handling NaNs safely)
+        comp_vals = [row[m] if pd.notna(row[m]) else 0 for m in metrics]
+        comp_vals += comp_vals[:1]
+        
+        peer_vals = [peer_averages.loc[idx, m] if pd.notna(peer_averages.loc[idx, m]) else 0 for m in metrics]
+        peer_vals += peer_vals[:1]
+        
+        # Normalization trick so all metrics display nicely on 0-100 scale limits
+        max_vals = [max(df[m].max(), 1) for m in metrics] + [1]
+        comp_scaled = [(v / m) * 100 for v, m in zip(comp_vals, max_vals)]
+        peer_scaled = [(v / m) * 100 for v, m in zip(peer_vals, max_vals)]
+        
+        # Matplotlib radar framework rendering
+        fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+        ax.set_theta_offset(np.pi / 2)
+        ax.set_theta_direction(-1)
+        
+        # Plot Company Framework Polygon
+        ax.plot(angles, comp_scaled, color='#1f77b4', linewidth=2, label=comp_id)
+        ax.fill(angles, comp_scaled, color='#1f77b4', alpha=0.3)
+        
+        # Plot Peer Group Dashed Outline Overlay
+        ax.plot(angles, peer_scaled, color='#ff7f0e', linewidth=1.5, linestyle='--', label='Peer Avg')
+        
+        ax.set_thetagrids(np.degrees(angles[:-1]), labels, fontsize=9)
+        plt.title(f"{comp_id} Performance Radar", fontsize=11, fontweight='bold', pad=15)
+        plt.legend(loc='upper right', bbox_to_anchor=(0.1, 0.1), fontsize=8)
+        
+        # STRICT DELIVERABLE FILENAME COMPLIANCE: _radar.png
+        filename = f"{comp_id}_radar.png"
+        plt.savefig(os.path.join(output_dir, filename), bbox_inches='tight', dpi=100)
+        plt.close()
+
+    print(f"[SUCCESS] All radar charts successfully saved to: {output_dir}")
 
 def execute_screener_pipeline():
     db_path = os.path.join("data", "nifty100.db")
@@ -143,18 +209,23 @@ def execute_screener_pipeline():
             preset_df.to_excel(writer, sheet_name=preset_name[:30], index=False)
     print(f"[SUCCESS] Generated multi-tab screener output sheet at: {screener_out_path}")
     
-    # 2. Global peer_comparison.xlsx
+    # 2. Strict Day 20 Compliance: 11 sheets inside peer_comparison.xlsx (one per peer group)
     peer_out_path = os.path.join("output", "peer_comparison.xlsx")
-    processed_df.to_excel(peer_out_path, sheet_name="Peer Rankings Master", index=False)
-    print(f"[SUCCESS] Generated benchmark peer comparison matrix at: {peer_out_path}")
-    
+    with pd.ExcelWriter(peer_out_path, engine='openpyxl') as writer:
+        unique_sectors = processed_df['peer_group'].dropna().unique()
+        for sector in unique_sectors:
+            sector_df = processed_df[processed_df['peer_group'] == sector]
+            sheet_name = str(sector)[:30]
+            sector_df.to_excel(writer, sheet_name=sheet_name, index=False)
+    print(f"[SUCCESS] Generated 11-sheet peer comparison matrix at: {peer_out_path}")
+    # [DAY 19] — Trigger Radar Chart Generation Engine
+    #generate_radar_charts(processed_df)
     conn.close()
 
 if __name__ == "__main__":
     db_path = os.path.join("data", "nifty100.db")
     conn = sqlite3.connect(db_path)
     
-    # 🔎 LIVE DIAGNOSTIC: Check if market_cap table has any non-null rows at all
     check_df = pd.read_sql_query("SELECT * FROM market_cap LIMIT 5;", conn)
     print("\n--- Market Cap Table Sample Data ---")
     print(check_df)
